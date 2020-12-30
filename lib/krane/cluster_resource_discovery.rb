@@ -23,9 +23,10 @@ module Krane
       fetch_resources(namespaced: namespaced).uniq { |r| r['kind'] }.map do |resource|
         next unless resource['verbs'].one? { |v| v == "delete" }
         next if black_list.include?(resource['kind'])
-        group_versions = api_versions[resource['apigroup'].to_s]
+        apigroup = "core" if resource['apigroup'].to_s == ""
+        group_versions = api_versions[apigroup]
         version = version_for_kind(group_versions, resource['kind'])
-        [resource['apigroup'], version, resource['kind']].compact.join("/")
+        [apigroup, version, resource['kind']].compact.join("/")
       end.compact
     end
 
@@ -69,11 +70,12 @@ module Krane
     # A kind may not exist in all versions of the group.
     def fetch_api_versions
       raw, err, st = kubectl.run("api-versions", attempts: 5, use_namespace: false)
-      # The "core" group is represented by an empty string
-      versions = { "" => %w(v1) }
+      versions = {}
       if st.success?
         rows = raw.split("\n")
         rows.each do |group_version|
+          # The "core/v1" group/version is represented by simply "v1"
+          group_version = "core/v1" if group_version == "v1"
           group, version = group_version.split("/")
           versions[group] ||= []
           versions[group] << version
